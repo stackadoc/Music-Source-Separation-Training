@@ -74,3 +74,8 @@ Scripts/
 
 results/
 wandb/
+/.idea/.gitignore
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/Music-Source-Separation-Training.iml
+/.idea/vcs.xml

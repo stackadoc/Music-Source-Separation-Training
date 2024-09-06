@@ -4,6 +4,7 @@ __version__ = '1.0.3'
 
 import random
 import argparse
+import shutil
 import time
 import copy
 from tqdm.auto import tqdm
@@ -98,7 +99,7 @@ def load_not_compatible_weights(model, weights, verbose=False):
         new_model
     )
 
-def valid(model, args, config, device, verbose=False):
+def valid(model, args, config, device, epoch, verbose=False):
     # For multiGPU extract single model
     if len(args.device_ids) > 1:
         model = model.module
@@ -124,6 +125,12 @@ def valid(model, args, config, device, verbose=False):
     if not verbose:
         all_mixtures_path = tqdm(all_mixtures_path)
 
+    # Output directory for all the validation WAV files
+    output_dir_all_evals = os.path.join(
+        args.results_path,
+        "eval-epoch-{}".format(str(epoch).zfill(5)),
+    )
+
     pbar_dict = {}
     for path in all_mixtures_path:
         mix, sr = sf.read(path)
@@ -131,6 +138,20 @@ def valid(model, args, config, device, verbose=False):
         if verbose:
             print('Song: {}'.format(os.path.basename(folder)))
         res = demix(config, model, mix.T, device, model_type=args.model_type) # mix.T
+
+        # Copy mixture to results for manual checks
+        output_dir = os.path.join(
+            output_dir_all_evals,
+            str(os.path.basename(os.path.dirname(path))),
+        )
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir)
+        output_path_mixture = os.path.join(
+            output_dir,
+            "mixture.wav",
+        )
+        shutil.copy(path, output_path_mixture)
+
         for instr in instruments:
             if instr != 'other' or config.training.other_fix is False:
                 track, sr1 = sf.read(folder + '/{}.wav'.format(instr))
@@ -138,7 +159,14 @@ def valid(model, args, config, device, verbose=False):
                 # other is actually instrumental
                 track, sr1 = sf.read(folder + '/{}.wav'.format('vocals'))
                 track = mix - track
-            # sf.write("{}.wav".format(instr), res[instr].T, sr, subtype='FLOAT')
+
+            # Save instrument demix to results for manual checks
+            output_path_instrument = os.path.join(
+                output_dir,
+                "{}.wav".format(instr),
+            )
+            sf.write(output_path_instrument, res[instr].T, sr, subtype='FLOAT')
+
             references = np.expand_dims(track, axis=0)
             estimates = np.expand_dims(res[instr].T, axis=0)
             sdr_val = sdr(references, estimates)[0]
@@ -158,6 +186,9 @@ def valid(model, args, config, device, verbose=False):
     sdr_avg /= len(instruments)
     if len(instruments) > 1:
         print('SDR Avg: {:.4f}'.format(sdr_avg))
+
+    print("Validation WAV files can be found at %s" % output_dir_all_evals)
+
     return sdr_avg
 
 
@@ -167,6 +198,7 @@ def proc_list_of_files(
     args,
     config,
     device,
+    epoch,
     verbose=False,
 ):
     instruments = config.training.instruments
@@ -176,6 +208,12 @@ def proc_list_of_files(
     all_sdr = dict()
     for instr in config.training.instruments:
         all_sdr[instr] = []
+
+    # Output directory for all the validation WAV files
+    output_dir_all_evals = os.path.join(
+        args.results_path,
+        "eval-epoch-{}".format(str(epoch).zfill(5)),
+    )
 
     for path in mixture_paths:
         mix, sr = sf.read(path)
@@ -193,6 +231,20 @@ def proc_list_of_files(
         if verbose:
             print('Song: {}'.format(folder_name))
         res = demix(config, model, mix, device, model_type=args.model_type)
+
+        # Copy mixture to results for manual checks
+        output_dir = os.path.join(
+            output_dir_all_evals,
+            str(os.path.basename(os.path.dirname(path))),
+        )
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir)
+        output_path_mixture = os.path.join(
+            output_dir,
+            "mixture.wav",
+        )
+        shutil.copy(path, output_path_mixture)
+
         if 1:
             pbar_dict = {}
             for instr in instruments:
@@ -207,6 +259,13 @@ def proc_list_of_files(
                     track, sr1 = sf.read(folder + '/{}.wav'.format('vocals'))
                     track = mix_orig - track
 
+                # Save instrument demix to results for manual checks
+                output_path_instrument = os.path.join(
+                    output_dir,
+                    "{}.wav".format(instr),
+                )
+                sf.write(output_path_instrument, res[instr].T, sr, subtype='FLOAT')
+
                 references = np.expand_dims(track, axis=0)
                 estimates = np.expand_dims(res[instr].T, axis=0)
                 sdr_val = sdr(references, estimates)[0]
@@ -220,10 +279,12 @@ def proc_list_of_files(
             except Exception as e:
                 pass
 
+    print("Validation WAV files can be found at %s" % output_dir_all_evals)
+
     return all_sdr
 
 
-def valid_mp(proc_id, queue, all_mixtures_path, model, args, config, device, return_dict):
+def valid_mp(proc_id, queue, all_mixtures_path, model, args, config, device, return_dict, epoch):
     m1 = model
     # m1 = copy.deepcopy(m1)
     m1 = m1.eval().to(device)
@@ -236,7 +297,7 @@ def valid_mp(proc_id, queue, all_mixtures_path, model, args, config, device, ret
         current_step, path = queue.get()
         if path is None:  # check for sentinel value
             break
-        sdr_single = proc_list_of_files([path], m1, args, config, device, False)
+        sdr_single = proc_list_of_files([path], m1, args, config, device, epoch, False)
         pbar_dict = {}
         for instr in config.training.instruments:
             all_sdr[instr] += sdr_single[instr]
@@ -250,7 +311,7 @@ def valid_mp(proc_id, queue, all_mixtures_path, model, args, config, device, ret
     return
 
 
-def valid_multi_gpu(model, args, config, verbose=False):
+def valid_multi_gpu(model, args, config, epoch, verbose=False):
     device_ids = args.device_ids
     model = model.to('cpu')
 
@@ -275,7 +336,7 @@ def valid_multi_gpu(model, args, config, verbose=False):
             device = 'cuda:{}'.format(device)
         else:
             device = 'cpu'
-        p = torch.multiprocessing.Process(target=valid_mp, args=(i, queue, all_mixtures_path, model, args, config, device, return_dict))
+        p = torch.multiprocessing.Process(target=valid_mp, args=(i, queue, all_mixtures_path, model, args, config, device, return_dict, epoch))
         p.start()
         processes.append(p)
     for i, path in enumerate(all_mixtures_path):
@@ -528,9 +589,9 @@ def train_model(args):
 
         # if you have problem with multiproc validation change 0 to 1
         if 0:
-            sdr_avg = valid(model, args, config, device, verbose=False)
+            sdr_avg = valid(model, args, config, device, epoch, verbose=False)
         else:
-            sdr_avg = valid_multi_gpu(model, args, config, verbose=False)
+            sdr_avg = valid_multi_gpu(model, args, config, epoch, verbose=False)
         if sdr_avg > best_sdr:
             store_path = args.results_path + '/model_{}_ep_{}_sdr_{:.4f}.ckpt'.format(args.model_type, epoch, sdr_avg)
             print('Store weights: {}'.format(store_path))
