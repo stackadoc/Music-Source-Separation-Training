@@ -212,7 +212,7 @@ def proc_list_of_files(
     # Output directory for all the validation WAV files
     output_dir_all_evals = os.path.join(
         args.results_path,
-        "eval-epoch-{}".format(str(epoch).zfill(5)),
+        f"eval-epoch-{str(epoch).zfill(5)}",
     )
 
     for path in mixture_paths:
@@ -247,30 +247,42 @@ def proc_list_of_files(
 
         if 1:
             pbar_dict = {}
-            for instr in instruments:
+            for idx_instr, instr in enumerate(instruments):
                 if instr != 'other' or config.training.other_fix is False:
                     try:
-                        track, sr1 = sf.read(folder + '/{}.wav'.format(instr))
+                        track_path = folder + '/{}.wav'.format(instr)
+                        track, sr1 = sf.read(track_path)
                     except Exception as e:
                         # print('No data for stem: {}. Skip!'.format(instr))
                         continue
                 else:
                     # other is actually instrumental
-                    track, sr1 = sf.read(folder + '/{}.wav'.format('vocals'))
+                    track_path = folder + '/{}.wav'.format(instr)
+                    track, sr1 = sf.read(track_path)
                     track = mix_orig - track
 
                 # Save instrument demix to results for manual checks
-                output_path_instrument = os.path.join(
+                output_path_instrument_generated = os.path.join(
                     output_dir,
-                    "{}.wav".format(instr),
+                    "{}_generated.wav".format(instr),
                 )
-                sf.write(output_path_instrument, res[instr].T, sr, subtype='FLOAT')
+                output_path_instrument_truth = os.path.join(
+                    output_dir,
+                    "{}_truth.wav".format(instr),
+                )
+                # Sometimes, the res is an ndarray insteady of a dict (maybe when there is only one instrument ?)
+                if isinstance(res, np.ndarray):
+                    res_instr = res[idx_instr]
+                else:
+                    res_instr = res[instr]
+                sf.write(output_path_instrument_generated, res_instr.T, sr, subtype='FLOAT')
+                shutil.copy(track_path, output_path_instrument_truth)
 
                 references = np.expand_dims(track, axis=0)
-                estimates = np.expand_dims(res[instr].T, axis=0)
+                estimates = np.expand_dims(res_instr.T, axis=0)
                 sdr_val = sdr(references, estimates)[0]
                 if verbose:
-                    print(instr, res[instr].shape, sdr_val)
+                    print(instr, res_instr.shape, sdr_val)
                 all_sdr[instr].append(sdr_val)
                 pbar_dict['sdr_{}'.format(instr)] = sdr_val
 
