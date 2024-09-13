@@ -2,6 +2,7 @@
 __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 __version__ = '1.0.3'
 
+import json
 import random
 import argparse
 import shutil
@@ -286,12 +287,18 @@ def proc_list_of_files(
                 all_sdr[instr].append(sdr_val)
                 pbar_dict['sdr_{}'.format(instr)] = sdr_val
 
+            # Save all sdr as file
+            output_path_sdr = os.path.join(
+                output_dir,
+                "sdr.json",
+            )
+            with open(output_path_sdr, "w") as f:
+                json.dump(pbar_dict, f, ensure_ascii=False, default=str)
+
             try:
                 mixture_paths.set_postfix(pbar_dict)
             except Exception as e:
                 pass
-
-    print("Validation WAV files can be found at %s" % output_dir_all_evals)
 
     return all_sdr
 
@@ -604,7 +611,8 @@ def train_model(args):
             sdr_avg = valid(model, args, config, device, epoch, verbose=False)
         else:
             sdr_avg = valid_multi_gpu(model, args, config, epoch, verbose=False)
-        if sdr_avg > best_sdr:
+        # if sdr_avg > best_sdr:
+        if 1:
             store_path = args.results_path + '/model_{}_ep_{}_sdr_{:.4f}.ckpt'.format(args.model_type, epoch, sdr_avg)
             print('Store weights: {}'.format(store_path))
             state_dict = model.state_dict() if len(device_ids) <= 1 else model.module.state_dict()
