@@ -404,6 +404,7 @@ def train_model(args):
     parser.add_argument("--use_mse_loss", action='store_true', help="Use default MSE loss")
     parser.add_argument("--use_l1_loss", action='store_true', help="Use L1 loss")
     parser.add_argument("--wandb_key", type=str, default='', help='wandb API Key')
+    parser.add_argument("--wandb_run_name", type=str, default='', help='wandb run name')
     if args is None:
         args = parser.parse_args()
     else:
@@ -433,7 +434,7 @@ def train_model(args):
         wandb.init(mode = 'disabled')
     else:
         wandb.login(key = args.wandb_key)
-        wandb.init(project = 'msst', config = { 'config': config, 'args': args, 'device_ids': device_ids, 'batch_size': batch_size })
+        wandb.init(project = 'msst', name = args.wandb_run_name, config = { 'config': config, 'args': args, 'device_ids': device_ids, 'batch_size': batch_size })
 
     trainset = MSSDataset(
         config,
