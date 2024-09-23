@@ -2,6 +2,7 @@
 __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
 import argparse
+import json
 import time
 import librosa
 from tqdm.auto import tqdm
@@ -25,7 +26,10 @@ warnings.filterwarnings("ignore")
 def run_folder(model, args, config, device, verbose=False):
     start_time = time.time()
     model.eval()
-    all_mixtures_path = glob.glob(args.input_folder + '/*.*')
+    if os.path.isfile(args.input_folder):
+        all_mixtures_path = [args.input_folder]
+    else:
+        all_mixtures_path = glob.glob(args.input_folder + '/*.*')
     all_mixtures_path.sort()
     print('Total files found: {}'.format(len(all_mixtures_path)))
 
@@ -43,7 +47,9 @@ def run_folder(model, args, config, device, verbose=False):
     else:
         detailed_pbar = True
 
+    output_files = {}
     for path in all_mixtures_path:
+        output_files[path] = {}
         print("Starting processing track: ", path)
         if not verbose:
             all_mixtures_path.set_postfix({'track': os.path.basename(path)})
@@ -108,12 +114,16 @@ def run_folder(model, args, config, device, verbose=False):
                 output_file = os.path.join(args.store_dir, f"{file_name}_{instr}.flac")
                 subtype = 'PCM_16' if args.pcm_type == 'PCM_16' else 'PCM_24'
                 sf.write(output_file, estimates, sr, subtype=subtype)
+                output_files[path][instr] = output_file
             else:
                 output_file = os.path.join(args.store_dir, f"{file_name}_{instr}.wav")
                 sf.write(output_file, estimates, sr, subtype='FLOAT')
+                output_files[path][instr] = output_file
 
     time.sleep(1)
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
+    print("Outputs:")
+    print(json.dumps(output_files, ensure_ascii=False, default=str))
 
 
 def proc_folder(args):
