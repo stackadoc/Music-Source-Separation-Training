@@ -3,6 +3,7 @@
 - Save validation outputs in results path for manual checks
 - Inference: enable input single file
 - Inference: print output paths
+- Inference: enable change subtype for soundfile.export
 
 # Music Source Separation Universal Training Code
 

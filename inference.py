@@ -117,7 +117,7 @@ def run_folder(model, args, config, device, verbose=False):
                 output_files[path][instr] = output_file
             else:
                 output_file = os.path.join(args.store_dir, f"{file_name}_{instr}.wav")
-                sf.write(output_file, estimates, sr, subtype='FLOAT')
+                sf.write(output_file, estimates, sr, subtype=args.pcm_type)
                 output_files[path][instr] = output_file
 
     time.sleep(1)
